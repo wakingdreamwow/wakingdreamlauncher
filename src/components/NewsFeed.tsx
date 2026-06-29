@@ -1,64 +1,47 @@
 import { useEffect, useState } from 'react';
+import { api, NewsItem } from '../lib/api';
 
-interface NewsItem {
-  id: number;
-  title: string;
-  description: string;
-  created: string;
-  badge?: string;
-}
-
-// Mock until /api/launcher/news is wired
-const MOCK_NEWS: NewsItem[] = [
-  {
-    id: 4,
-    title: 'Wakingdream Launcher v0.1 released',
-    description: 'Initial release with patch sync, realmlist auto-set, and onboarding flow.',
-    created: '2026-06-28',
-    badge: 'Release',
-  },
-  {
-    id: 3,
-    title: 'The Emerald Sentinels questline goes live',
-    description:
-      'Defeat the Lich King (10/25, normal or heroic) to unlock The Emerald Sentinels — slay all four corrupted Dragon-Sentinels for Activity Tokens, Emblems of Frost, and a chance at custom Emerald-themed drake mounts.',
-    created: '2026-06-28',
-    badge: 'Content',
-  },
-  {
-    id: 2,
-    title: '22 custom world bosses with weekly random spawn windows',
-    description:
-      'New world bosses across Eastern Kingdoms, Kalimdor, and Northrend. Each spawns once per WoW-week for up to 24 hours — never the same schedule twice.',
-    created: '2026-06-26',
-    badge: 'Content',
-  },
-  {
-    id: 1,
-    title: 'Wakingdream is live',
-    description: 'Welcome to a reimagined WoW 3.3.5a experience.',
-    created: '2026-06-25',
-    badge: 'Launch',
-  },
-];
-
-function badgeColor(badge?: string) {
-  switch (badge) {
-    case 'Release': return 'bg-smaragd';
-    case 'Content': return 'bg-dream-purple';
-    case 'Launch': return 'bg-gold';
-    default:        return 'bg-nightmare';
+function badgeFromCategory(cat?: string): { label: string; color: string } {
+  switch ((cat ?? '').toLowerCase()) {
+    case 'order_failure': return { label: 'Issue',    color: 'bg-red-700' };
+    case 'exploit':       return { label: 'Exploit',  color: 'bg-red-800' };
+    case 'technical':     return { label: 'Tech',     color: 'bg-dream-purple' };
+    case 'dungeon':       return { label: 'Dungeon',  color: 'bg-dream-purple' };
+    case 'content':       return { label: 'Content',  color: 'bg-dream-purple' };
+    case 'release':       return { label: 'Release',  color: 'bg-smaragd' };
+    case 'launch':        return { label: 'Launch',   color: 'bg-gold' };
+    default:              return { label: cat ? cat[0].toUpperCase() + cat.slice(1) : 'News', color: 'bg-nightmare' };
   }
 }
 
-export function NewsFeed() {
-  const [items, setItems] = useState<NewsItem[]>(MOCK_NEWS);
-  const [loading, setLoading] = useState(false);
+function relTime(unixOrIso: string): string {
+  let ms: number;
+  if (/^\d+$/.test(unixOrIso)) {
+    ms = parseInt(unixOrIso, 10) * 1000;
+  } else {
+    ms = new Date(unixOrIso).getTime();
+  }
+  if (!ms || isNaN(ms)) return '';
+  const diff = (Date.now() - ms) / 1000;
+  if (diff < 60)        return 'just now';
+  if (diff < 3600)      return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400)     return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
+  return new Date(ms).toLocaleDateString();
+}
 
-  // TODO: Wire to fetch('/api/launcher/news') when backend is up
+export function NewsFeed() {
+  const [items, setItems] = useState<NewsItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
-    setLoading(false);
-    setItems(MOCK_NEWS);
+    let cancelled = false;
+    api.news()
+      .then((res) => { if (!cancelled) setItems(res.items ?? []); })
+      .catch((e) => { if (!cancelled) setError(String(e.message ?? e)); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   return (
@@ -67,21 +50,36 @@ export function NewsFeed() {
         <h2 className="text-lg font-display font-bold text-smaragd-light">Latest News</h2>
         {loading && <span className="text-xs text-dawn/40">Loading…</span>}
       </div>
+
+      {error && (
+        <div className="text-sm text-red-300 bg-red-900/30 border border-red-700 rounded p-2 mb-3">
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
+        <div className="text-sm text-dawn/40 italic">No news yet.</div>
+      )}
+
       <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-        {items.map((n) => (
-          <div key={n.id} className="border-l-2 border-smaragd/40 pl-3 py-1">
-            <div className="flex items-center gap-2 mb-1">
-              {n.badge && (
-                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${badgeColor(n.badge)} text-dawn`}>
-                  {n.badge}
+        {items.map((n) => {
+          const badge = badgeFromCategory(n.category);
+          return (
+            <div key={n.id} className="border-l-2 border-smaragd/40 pl-3 py-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${badge.color} text-dawn`}>
+                  {badge.label}
                 </span>
-              )}
-              <span className="text-xs text-dawn/40 font-mono">{n.created}</span>
+                <span className="text-xs text-dawn/40 font-mono">{relTime(n.created_at)}</span>
+                {n.status && n.status !== 'open' && (
+                  <span className="text-[10px] text-dawn/40 uppercase">{n.status}</span>
+                )}
+              </div>
+              <div className="font-medium text-dawn">{n.title}</div>
+              <p className="text-sm text-dawn/60 mt-0.5 line-clamp-2">{n.description}</p>
             </div>
-            <div className="font-medium text-dawn">{n.title}</div>
-            <p className="text-sm text-dawn/60 mt-0.5">{n.description}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

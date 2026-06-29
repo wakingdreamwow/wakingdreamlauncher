@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { api } from '../lib/api';
 
 export function RegisterForm({ onClose }: { onClose: () => void }) {
   const [username, setUsername] = useState('');
@@ -7,18 +8,24 @@ export function RegisterForm({ onClose }: { onClose: () => void }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [todo, setTodo] = useState<string | null>(null);
 
   const submit = async () => {
     setSubmitting(true);
     setError(null);
+    setTodo(null);
     try {
-      // TODO: POST to https://wakingdream.cc/api/launcher/register
-      // For now: placeholder
-      await new Promise((r) => setTimeout(r, 800));
-      setSuccess(true);
-      setTimeout(onClose, 1500);
-    } catch (e) {
-      setError(String(e));
+      const res = await api.register({ username, password, email });
+      if (res.ok) {
+        setSuccess(true);
+        setTimeout(onClose, 1500);
+      } else {
+        // Backend currently returns ok:false todo:'...' (501) — surface honestly
+        if (res.todo) setTodo(res.todo);
+        else setError(res.error ?? 'Unknown error');
+      }
+    } catch (e: any) {
+      setError(String(e?.message ?? e));
     } finally {
       setSubmitting(false);
     }
@@ -62,6 +69,22 @@ export function RegisterForm({ onClose }: { onClose: () => void }) {
             {error && (
               <div className="mb-3 px-3 py-2 bg-red-900/40 border border-red-700 rounded text-sm text-red-200">
                 {error}
+              </div>
+            )}
+            {todo && (
+              <div className="mb-3 px-3 py-2 bg-amber-900/30 border border-amber-700 rounded text-xs text-amber-100">
+                Server says: {todo}
+                <div className="mt-1 text-amber-200/80">
+                  In the meantime, create your account via{' '}
+                  <a
+                    href="https://wakingdream.cc/register"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
+                    the web register page
+                  </a>.
+                </div>
               </div>
             )}
 

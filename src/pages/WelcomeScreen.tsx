@@ -1,9 +1,13 @@
+import logo from '../assets/logo/wakingdream-logo.png';
+
 export function WelcomeScreen({ onContinue }: { onContinue: () => void }) {
   return (
     <div className="h-full flex flex-col items-center justify-center p-10 text-center">
-      <div className="w-32 h-32 rounded-full bg-gradient-to-br from-smaragd to-smaragd-dark flex items-center justify-center mb-6 shadow-2xl">
-        <span className="text-5xl">🐉</span>
-      </div>
+      <img
+        src={logo}
+        alt="Wakingdream"
+        className="w-44 h-44 object-contain mb-6 drop-shadow-[0_0_25px_rgba(76,175,80,0.45)]"
+      />
       <h1 className="text-4xl font-display font-bold text-smaragd-light mb-2">Welcome to Wakingdream</h1>
       <p className="text-dawn/70 mb-8 max-w-md">
         A WoW 3.3.5a private server experience reimagined — custom raids, dynamic phasing, and a living Emerald Dream.

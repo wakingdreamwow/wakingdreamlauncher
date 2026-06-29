@@ -1,6 +1,6 @@
 {
   "name": "wakingdream-launcher",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "description": "Cross-platform launcher for Wakingdream WoW 3.3.5a private server",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -27,6 +27,7 @@
     "vite-plugin-electron-renderer": "^0.14.5"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -41,8 +42,31 @@
       "dist-electron/**/*",
       "assets/logo/icon-512.png"
     ],
-    "win": {"target": ["nsis"], "icon": "assets/logo/icon-256.png"},
-    "linux": {"target": ["AppImage"], "icon": "assets/logo/icon-512.png", "category": "Game"},
-    "mac": {"target": ["dmg"], "icon": "assets/logo/icon-512.png"}
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/logo/icon-256.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "assets/logo/icon-512.png",
+      "category": "Game",
+      "artifactName": "wakingdream-launcher-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "assets/logo/icon-512.png"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://patches.wakingdream.cc/launcher/"
+      }
+    ]
   }
 }
