@@ -1,0 +1,96 @@
+name: Build and deploy launcher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'electron/**'
+      - 'assets/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.ts'
+      - 'tailwind.config.js'
+      - '.github/workflows/build-and-deploy.yml'
+  workflow_dispatch:  # manual trigger from the Actions tab
+
+concurrency:
+  group: launcher-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + electron entry
+        run: npx vite build
+
+      - name: Build Linux AppImage
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --linux AppImage --publish never
+
+      - name: Build Windows portable .exe
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --win portable --x64 --publish never
+
+      - name: Show release/ contents
+        run: ls -la release/
+
+      - name: Set up SSH for Netcup deploy
+        env:
+          NETCUP_SSH_KEY: ${{ secrets.NETCUP_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$NETCUP_SSH_KEY" > ~/.ssh/netcup_deploy
+          chmod 600 ~/.ssh/netcup_deploy
+          ssh-keyscan -t ed25519,rsa,ecdsa 159.195.67.49 >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Read version from package.json
+        id: ver
+        run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: scp artifacts to Netcup
+        run: |
+          scp -i ~/.ssh/netcup_deploy \
+            "release/wakingdream-launcher-${{ steps.ver.outputs.version }}.AppImage" \
+            "release/wakingdream-launcher-${{ steps.ver.outputs.version }}-portable.exe" \
+            release/latest-linux.yml \
+            root@159.195.67.49:/home/acore/caddy/patches/launcher/
+
+      - name: Fix ownership + update stable symlinks
+        run: |
+          ssh -i ~/.ssh/netcup_deploy root@159.195.67.49 "
+            cd /home/acore/caddy/patches/launcher &&
+            chown acore:acore wakingdream-launcher-${{ steps.ver.outputs.version }}.AppImage wakingdream-launcher-${{ steps.ver.outputs.version }}-portable.exe latest-linux.yml &&
+            chmod 644 wakingdream-launcher-${{ steps.ver.outputs.version }}.AppImage wakingdream-launcher-${{ steps.ver.outputs.version }}-portable.exe latest-linux.yml &&
+            ln -sf wakingdream-launcher-${{ steps.ver.outputs.version }}.AppImage wakingdream-launcher-latest.AppImage &&
+            ln -sf wakingdream-launcher-${{ steps.ver.outputs.version }}-portable.exe wakingdream-launcher-latest.exe &&
+            ls -la wakingdream-launcher-latest.*
+          "
+
+      - name: Verify public download URLs
+        run: |
+          for f in wakingdream-launcher-latest.AppImage wakingdream-launcher-latest.exe latest-linux.yml; do
+            code=$(curl -sI -o /dev/null -w "%{http_code}" "https://patches.wakingdream.cc/launcher/$f")
+            echo "$f → HTTP $code"
+            [ "$code" = "200" ] || exit 1
+          done
+
+      - name: Summary
+        run: |
+          echo "### Launcher v${{ steps.ver.outputs.version }} deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- Linux: https://patches.wakingdream.cc/launcher/wakingdream-launcher-latest.AppImage" >> $GITHUB_STEP_SUMMARY
+          echo "- Windows: https://patches.wakingdream.cc/launcher/wakingdream-launcher-latest.exe" >> $GITHUB_STEP_SUMMARY
+          echo "- Auto-update manifest: https://patches.wakingdream.cc/launcher/latest-linux.yml" >> $GITHUB_STEP_SUMMARY
