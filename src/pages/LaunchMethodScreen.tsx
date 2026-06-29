@@ -130,10 +130,7 @@ export function LaunchMethodScreen({ onContinue }: Props) {
               role="radio"
               aria-checked={selected}
               tabIndex={available ? 0 : -1}
-              onClick={(e) => {
-                console.log('[DEBUG launch-pick] box click', { kind: opt.kind, available, target: (e.target as HTMLElement)?.tagName });
-                if (available) setKind(opt.kind);
-              }}
+              onClick={() => available && setKind(opt.kind)}
               onKeyDown={(e) => {
                 if (!available) return;
                 if (e.key === ' ' || e.key === 'Enter') {

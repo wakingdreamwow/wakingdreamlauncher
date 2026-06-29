@@ -5,8 +5,17 @@
 body {
   font-family: 'Inter', system-ui, sans-serif;
   user-select: none;
+}
+
+/* Drag region only on the TitleBar (frameless-window quirk).
+   Without this scoping, body-wide drag steals every click/wheel
+   except on native form controls. */
+.titlebar-drag {
   -webkit-app-region: drag;
 }
-button, input, a, [role="button"] {
+.titlebar-drag button,
+.titlebar-drag input,
+.titlebar-drag a,
+.titlebar-drag [role="button"] {
   -webkit-app-region: no-drag;
 }

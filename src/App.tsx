@@ -40,7 +40,7 @@ export function App() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-nightmare" onWheelCapture={(e) => console.log('[DEBUG wheel] deltaY', e.deltaY, 'on', (e.target as HTMLElement)?.tagName)}>
+    <div className="h-screen flex flex-col bg-nightmare">
       <TitleBar />
       <UpdateBanner />
       <div className="flex-1 min-h-0 overflow-y-auto">
