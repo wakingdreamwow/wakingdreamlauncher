@@ -124,6 +124,10 @@ ipcMain.handle('system:detect-launchers', async () => {
 // launchSpec.kind: 'native' | 'wine' | 'lutris-exec' | 'lutris-game' | 'custom'
 // For 'lutris-game' → launchSpec.gameSlug (e.g. "world-of-warcraft")
 // For 'custom'      → launchSpec.command (template; {wowExe} and {wowDir} placeholders)
+//
+// We pipe stderr/stdout for ~4 s after spawn so early failures (wrong path,
+// missing runner, bad lutris slug) surface in the renderer error box. After
+// the grace window the process is unref'd and detached.
 ipcMain.handle(
   'wow:launch',
   async (_e, wowDir: string, launchSpec?: { kind?: string; gameSlug?: string; command?: string }) => {
@@ -134,14 +138,39 @@ ipcMain.handle(
       launchSpec?.kind
       || (process.platform === 'win32' ? 'native' : 'wine');
 
-    const spawnDetached = (cmd: string, args: string[]) => {
-      spawn(cmd, args, { detached: true, stdio: 'ignore', cwd: wowDir }).unref();
+    const launchAndWatch = async (cmd: string, args: string[], runtime: string) => {
+      console.log('[launch]', cmd, args);
+      const proc = spawn(cmd, args, { detached: true, stdio: ['ignore', 'pipe', 'pipe'], cwd: wowDir });
+      let stderr = '';
+      let stdout = '';
+      proc.stdout?.on('data', (d: Buffer) => { stdout += d.toString(); });
+      proc.stderr?.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+      const earlyExit = await new Promise<{ code: number | null; signal: string | null } | null>((resolve) => {
+        const t = setTimeout(() => resolve(null), 4000);
+        proc.once('exit', (code, signal) => { clearTimeout(t); resolve({ code, signal }); });
+        proc.once('error', () => { clearTimeout(t); resolve({ code: -1, signal: 'spawn-error' }); });
+      });
+
+      if (earlyExit) {
+        const tail = (stderr || stdout).trim().split('\n').slice(-8).join('\n');
+        if (earlyExit.code !== 0) {
+          throw new Error(
+            `${runtime} exited (code=${earlyExit.code}, signal=${earlyExit.signal}).\n\n` +
+            `Command: ${cmd} ${args.join(' ')}\n\n` +
+            (tail ? `Output (last 8 lines):\n${tail}` : '(no output captured)'),
+          );
+        }
+        // exited 0 within 4s — probably a launcher that forks then quits (lutris does this)
+      }
+
+      proc.unref();
+      return { ok: true, runtime };
     };
 
     switch (kind) {
       case 'native': {
-        spawnDetached(wowExe, []);
-        return { ok: true, runtime: 'native' };
+        return await launchAndWatch(wowExe, [], 'native');
       }
       case 'wine': {
         if (!isAvailable('wine')) {
@@ -152,21 +181,21 @@ ipcMain.handle(
             '  macOS (Homebrew):     brew install --cask wine-stable',
           );
         }
-        spawnDetached('wine', [wowExe]);
-        return { ok: true, runtime: 'wine' };
+        return await launchAndWatch('wine', [wowExe], 'wine');
       }
       case 'lutris-exec': {
         if (!isAvailable('lutris')) throw new Error('Lutris not found. Install with: sudo apt install lutris');
-        // lutris -e <executable> runs the binary using Lutris default Wine config
-        spawnDetached('lutris', ['-e', wowExe]);
-        return { ok: true, runtime: 'lutris-exec' };
+        // -e/--exec needs an explicit runner; wine is the only sensible one for a Win32 .exe.
+        return await launchAndWatch('lutris', ['-e', wowExe, '--runner', 'wine'], 'lutris-exec');
       }
       case 'lutris-game': {
         if (!isAvailable('lutris')) throw new Error('Lutris not found. Install with: sudo apt install lutris');
         const slug = launchSpec?.gameSlug?.trim();
         if (!slug) throw new Error('Lutris game slug missing (e.g. "world-of-warcraft")');
-        spawnDetached('lutris', [`lutris:rungame/${slug}`]);
-        return { ok: true, runtime: `lutris-game:${slug}` };
+        // lutris: URLs require either a numeric ID (rungameid) or slug (rungame).
+        // We accept both — caller can paste either.
+        const uri = /^\d+$/.test(slug) ? `lutris:rungameid/${slug}` : `lutris:rungame/${slug}`;
+        return await launchAndWatch('lutris', [uri], `lutris-game:${slug}`);
       }
       case 'custom': {
         const template = launchSpec?.command?.trim();
@@ -177,8 +206,7 @@ ipcMain.handle(
         const tokens = rendered.match(/(?:[^\s"]+|"[^"]*")+/g) || [];
         const [cmd, ...args] = tokens.map((t) => t.replace(/^"|"$/g, ''));
         if (!cmd) throw new Error('Custom command parse error');
-        spawnDetached(cmd, args);
-        return { ok: true, runtime: `custom:${cmd}` };
+        return await launchAndWatch(cmd, args, `custom:${cmd}`);
       }
       default:
         throw new Error(`Unknown launch kind: ${kind}`);
