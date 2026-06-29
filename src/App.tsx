@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { TitleBar } from './components/TitleBar';
 import { UpdateBanner } from './components/UpdateBanner';
+import { VersionFooter } from './components/VersionFooter';
 import { WelcomeScreen } from './pages/WelcomeScreen';
 import { ClientDetectScreen } from './pages/ClientDetectScreen';
 import { LaunchMethodScreen, loadSavedLaunchSpec } from './pages/LaunchMethodScreen';
@@ -50,6 +51,7 @@ export function App() {
         {step === 'patches'       && <PatchSyncScreen    onDone={() => setStep('main')} wowDir={wowDir!} />}
         {step === 'main'          && <MainScreen wowDir={wowDir!} launchSpec={launchSpec!} onSpecChange={setLaunchSpec} />}
       </div>
+      <VersionFooter />
     </div>
   );
 }

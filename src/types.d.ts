@@ -116,6 +116,8 @@ declare global {
   interface Window {
     wakingdream: WakingdreamAPI;
   }
+  const __APP_VERSION__: string;
+  const __APP_BUILD_DATE__: string;
 }
 
 // Vite asset imports — image files resolve to a URL string at build time.
