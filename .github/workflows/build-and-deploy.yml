@@ -53,9 +53,14 @@ jobs:
           NETCUP_SSH_KEY: ${{ secrets.NETCUP_SSH_KEY }}
         run: |
           mkdir -p ~/.ssh
-          echo "$NETCUP_SSH_KEY" > ~/.ssh/netcup_deploy
+          # printf '%s\n' guarantees a trailing newline even if the pasted secret
+          # was missing one — OpenSSH refuses to load otherwise.
+          printf '%s\n' "$NETCUP_SSH_KEY" > ~/.ssh/netcup_deploy
           chmod 600 ~/.ssh/netcup_deploy
           ssh-keyscan -t ed25519,rsa,ecdsa 159.195.67.49 >> ~/.ssh/known_hosts 2>/dev/null
+          # Sanity-check the key parses before we try to use it
+          ssh-keygen -y -f ~/.ssh/netcup_deploy >/dev/null
+          echo "key loaded OK"
 
       - name: Read version from package.json
         id: ver
