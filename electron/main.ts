@@ -185,8 +185,10 @@ ipcMain.handle(
       }
       case 'lutris-exec': {
         if (!isAvailable('lutris')) throw new Error('Lutris not found. Install with: sudo apt install lutris');
-        // -e/--exec needs an explicit runner; wine is the only sensible one for a Win32 .exe.
-        return await launchAndWatch('lutris', ['-e', wowExe, '--runner', 'wine'], 'lutris-exec');
+        // -e/--exec runs the program in Lutris's runtime; Lutris picks the runner
+        // from the file type (Win32 .exe → wine). The --runner flag is not
+        // supported on all Lutris versions and breaks 0.5.x style CLIs.
+        return await launchAndWatch('lutris', ['-e', wowExe], 'lutris-exec');
       }
       case 'lutris-game': {
         if (!isAvailable('lutris')) throw new Error('Lutris not found. Install with: sudo apt install lutris');

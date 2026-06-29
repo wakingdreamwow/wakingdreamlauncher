@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NewsFeed } from '../components/NewsFeed';
 import { ServerStatus } from '../components/ServerStatus';
 import { RegisterForm } from '../components/RegisterForm';
@@ -20,6 +20,11 @@ export function MainScreen({ wowDir, launchSpec, onSpecChange }: Props) {
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [showRegister, setShowRegister] = useState(false);
   const [tab, setTab] = useState<Tab>('home');
+
+  // Clear stale launch errors whenever the user picks a different launch method.
+  useEffect(() => {
+    setLaunchError(null);
+  }, [launchSpec.kind, launchSpec.gameSlug, launchSpec.command]);
 
   const play = async () => {
     setLaunching(true);
@@ -101,8 +106,15 @@ export function MainScreen({ wowDir, launchSpec, onSpecChange }: Props) {
       </div>
 
       {launchError && (
-        <div className="mt-3 px-3 py-2 bg-red-900/40 border border-red-700 rounded text-sm text-red-200 whitespace-pre-wrap font-mono text-xs">
-          {launchError}
+        <div className="mt-3 px-3 py-2 bg-red-900/40 border border-red-700 rounded text-sm text-red-200 whitespace-pre-wrap font-mono text-xs relative">
+          <button
+            onClick={() => setLaunchError(null)}
+            title="Dismiss"
+            className="absolute top-1 right-2 text-red-300 hover:text-red-100 text-base leading-none"
+          >
+            ×
+          </button>
+          <div className="pr-6">{launchError}</div>
         </div>
       )}
 
