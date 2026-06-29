@@ -44,9 +44,14 @@
     ],
     "win": {
       "target": [
-        "nsis"
+        "portable"
       ],
-      "icon": "assets/logo/icon-256.png"
+      "icon": "assets/logo/icon-256.png",
+      "signAndEditExecutable": false,
+      "artifactName": "wakingdream-launcher-${version}-portable.${ext}"
+    },
+    "portable": {
+      "artifactName": "wakingdream-launcher-${version}-portable.${ext}"
     },
     "linux": {
       "target": [
