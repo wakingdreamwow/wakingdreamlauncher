@@ -1,37 +1,72 @@
-# Wakingdream Launcher — Implementation Plan
+# Wakingdream Launcher — Status & Plan
 
-## Phase A: MVP (~3 days)
-- [ ] Electron + Vite + React + TS scaffold
-- [ ] Welcome / Onboarding wizard UI
-- [ ] Client-detect (file picker + Wow.exe build verification)
-- [ ] Patch manifest fetch from `https://patches.wakingdream.cc/manifest.json`
-- [ ] Patch download with progress + SHA256 verify
-- [ ] Realmlist auto-write to `<WoW_dir>/realmlist.wtf`
-- [ ] WoW.exe spawn
-- [ ] Backend `/api/launcher/manifest` endpoint in FCMS
+**Repo:** https://github.com/wakingdreamwow/wakingdreamlauncher
+**Distribution:** https://patches.wakingdream.cc/launcher/
+**Stable URLs:**
+- Linux: https://patches.wakingdream.cc/launcher/wakingdream-launcher-latest.AppImage
+- Windows: https://patches.wakingdream.cc/launcher/wakingdream-launcher-latest.exe
+- Auto-Update manifest: https://patches.wakingdream.cc/launcher/latest-linux.yml
 
-## Phase B: Polish (~2 days)
-- [ ] News feed (markdown + remote URL)
-- [ ] Account-Register form → POST to FCMS /api/register
-- [ ] Live Server Status panel (online players, boss state)
-- [ ] Branding + theme polish (Wakingdream logo + color palette)
-- [ ] Settings screen (WoW dir override, patch dir, etc.)
+## Current version: 0.2.7 (29.06.2026)
 
-## Phase C: Distribution (~1 day)
-- [ ] electron-builder configs (Windows MSI, Linux AppImage, macOS dmg)
-- [ ] electron-updater self-update
-- [ ] Download page on wakingdream.cc
-- [ ] Code-signing (optional, can do later)
+## ✅ Done (Phases A → D + Distribution)
 
-## Phase D: Curated Addons Manager (~1 day)
-- [ ] Addons tab UI
-- [ ] Per-addon checkboxes + descriptions + sizes
-- [ ] Download from `patches.wakingdream.cc/addons/<name>.zip`
-- [ ] Auto-extract to `<WoW_dir>/Interface/AddOns/`
-- [ ] Curated list:
-  - DBM, Recount, Atlas+AtlasLoot, Bartender4
-  - Auctionator, Postal, Pawn, TitanPanel
-  - WIM, TacoTip
-  - Wakingdream-Companion (eigenes Addon)
+### Phase A — MVP
+- Electron 28 + Vite 5 + React 18 + Tailwind 3 + TypeScript scaffold
+- Welcome / Client-Detect / Patch-Sync / Main 4-step onboarding
+- Patch manifest fetch + SHA256-verified download
+- Realmlist auto-write (root + every `Data/<locale>/realmlist.wtf` on PLAY + on MainScreen mount)
+- WoW.exe launch (multi-wrapper, see C+)
 
-## Total: ~7 working days
+### Phase B — Polish
+- News feed live (FCMS `articles` + `changelog` table, HTML stripped, max 15 items, sorted newest first)
+- Account register live (FCMS `External_account_model::createAccount`, SRP6, dup-check, validation)
+- Live Server Status (polled every 30s from `/api/launcher/status`, shows realm name + players + active world bosses)
+- Branding: Drachen-Medallion-Logo (color-keyed transparent), TitleBar + Welcome + Main + Web-Favicon
+- Settings tab with editable launch method picker
+
+### Phase C — Distribution + auto-update
+- electron-builder Linux AppImage + Windows portable .exe (cross-build from Linux, `signAndEditExecutable:false`)
+- electron-updater wired to `https://patches.wakingdream.cc/launcher/`
+- Update-Banner UI: checking → available → downloading (progress bar) → ready (Restart-now button)
+- Stable symlinks `wakingdream-launcher-latest.{AppImage,exe}` for marketing URLs
+- Web sidebox + How-to-Connect article both link to stable URLs
+
+### Phase D — Curated Addons Manager
+- Per-addon checkboxes + descriptions + sizes
+- Download + extract-zip → `<WoW_dir>/Interface/AddOns/`
+- Uninstall + state persistence in `<userData>/wakingdream-addons.json`
+- Curated 11-addon JSON (DBM/Recount/Atlas/Bartender4/Auctionator/Postal/Pawn/TitanPanel/WIM/TacoTip/Wakingdream-Companion)
+- **TODO:** actual `addons/*.zip` payloads are not yet on patches server — clicking install today returns 404. Bundle pass needed.
+
+### Extras (beyond original plan)
+- Multi-wrapper launch picker: Native / Wine / Lutris-Quick-Exec / Lutris-Configured-Game / Custom-Command
+- Auto-detection (`detectLaunchers` IPC) gates wrapper options + shows install instructions
+- Setup-hint banner + per-option "Open install page" links (winehq.org / lutris.net) for missing wrappers
+- Version-Footer at bottom of window (`v<X.Y.Z> · build <ISO timestamp>` injected via Vite define)
+- Launch-error capture: pipes stdout/stderr for 4s, surfaces exit-code + command + last 8 output lines in dismissable error box
+- Settings-tab inline LaunchMethodScreen with auto-clear stale launch errors on spec change
+- CORS headers on FCMS launcher endpoints (dev-mode renderer can fetch from localhost:5173)
+- CSRF exempt `/api/launcher/.*` (was breaking POST register)
+
+### Lessons learned (bug postmortems)
+- `body { -webkit-app-region: drag }` made the whole window a drag zone → all custom DOM elements (div role=radio, scroll containers) silently swallowed clicks/wheels. Only native `button`/`input`/`a`/`[role=button]` kept getting events. Scope to `.titlebar-drag` class only.
+- Tailwind `flex-1 overflow-y-auto` doesn't actually scroll unless flex parent also has `min-h-0`. Default flex `min-height: auto` (= content) prevents shrinking.
+- `electron-builder --win nsis` cross-build from Linux failed at signing-helper-binary execute. Switching to `--win portable` produces a single-file .exe (no NSIS sub-binaries needed). `signAndEditExecutable: false` skips signing entirely.
+- electron-updater needs `.blockmap` for diff-updates — auto-generated by builder, just deploy alongside `.AppImage`.
+- FCMS sideboxes need `pages` set to `'["*"]'` or specific page list — NULL is treated as 'no match' by the LIKE filter and the sidebox is invisible.
+- mysql connection without `--default-character-set=utf8mb4` interprets stdin Unicode as Latin1 → mojibake on `⬇`, `·`, `—`. Use ASCII-only or set the flag.
+- WoW 3.3.5a realmlist.wtf has two locations; `Data/<locale>/realmlist.wtf` takes precedence over root. Locale-detection: subdir contains `base-<loc>.MPQ` or `locale-<loc>.MPQ`.
+
+## 🟡 Todo (open)
+
+- [ ] GitHub Actions CI: push to main → build Linux+Win → deploy to patches.wakingdream.cc/launcher/ (~30 min setup)
+- [ ] Bundle the 11 curated addons as `.zip` and host on patches server (currently 404 on install)
+- [ ] macOS .dmg build (cross-build from Linux works with electron-builder; skipped for now per Daniel)
+- [ ] Code-signing cert for Windows (eliminates SmartScreen warning; ~€200/year optional)
+
+## Daniel-confirmed roadmap
+
+- Auto-deploy via GitHub Actions = next priority once CI is set up
+- macOS build deferred
+- Code-signing deferred (will hit when first non-tech user balks)
