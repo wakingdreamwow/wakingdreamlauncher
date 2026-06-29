@@ -9,6 +9,11 @@ export interface PatchEntry {
   sha256: string;
   size_bytes: number;
   url: string;
+  // Where the file should land inside the WoW dir.
+  // Default 'Data' (= <wowDir>/Data/<name>) for backward compat, but locale
+  // MPQs MUST set this to 'Data/enUS' (etc.) — WoW only reads locale patches
+  // from <wowDir>/Data/<locale>/.
+  install_dir?: string;
   category?: string;
   description?: string;
 }
@@ -130,11 +135,35 @@ export async function syncPatches(
 
   onProgress({ phase: 'check', message: 'Comparing local patches with manifest…' });
 
-  // Identify patches that need download
+  const destFileFor = (p: PatchEntry) =>
+    path.join(wowDir, p.install_dir || 'Data', p.name);
+
+  // A patch needs (re-)installing if:
+  //  - we never installed it, OR
+  //  - its sha256 changed, OR
+  //  - the file is missing at the expected install_dir (e.g. install_dir
+  //    moved between versions — backwards-compat for older buggy installs
+  //    that wrote locale patches to Data/ instead of Data/enUS/).
   const toDownload: PatchEntry[] = manifest.patches.filter((p) => {
     const known = local.patches[p.name];
-    return !known || known.sha256 !== p.sha256;
+    if (!known || known.sha256 !== p.sha256) return true;
+    if (!fs.existsSync(destFileFor(p))) return true;
+    return false;
   });
+
+  // Clean up old wrong-location copies (e.g. pre-install_dir versions put
+  // locale MPQs in <wowDir>/Data/<name>. We delete them if the new
+  // install_dir is a subdirectory of Data).
+  for (const p of manifest.patches) {
+    const wrongOld = path.join(wowDir, 'Data', p.name);
+    const correctNew = destFileFor(p);
+    if (wrongOld !== correctNew && fs.existsSync(wrongOld)) {
+      try {
+        fs.unlinkSync(wrongOld);
+        onProgress({ phase: 'check', message: `Removed stale ${p.name} from Data/ (moved to ${p.install_dir})` });
+      } catch { /* ignore */ }
+    }
+  }
 
   if (toDownload.length === 0) {
     onProgress({ phase: 'done', message: 'All patches up to date.' });
@@ -143,7 +172,8 @@ export async function syncPatches(
 
   for (let i = 0; i < toDownload.length; i++) {
     const patch = toDownload[i];
-    const destFile = path.join(wowDir, 'Data', patch.name);
+    const destFile = destFileFor(patch);
+    fs.mkdirSync(path.dirname(destFile), { recursive: true });
     const tmpFile = destFile + '.partial';
 
     onProgress({

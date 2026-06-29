@@ -32,6 +32,18 @@ export function MainScreen({ wowDir, launchSpec, onSpecChange }: Props) {
     window.wakingdream.setRealmlist(wowDir, 'wakingdream.cc').catch(() => { /* surfaced via PLAY-time errors */ });
   }, [wowDir]);
 
+  // Pull any new/updated patches that landed in the manifest while the user
+  // was already past initial setup. Idempotent — does nothing if everything
+  // is in sync. Failures surface in the news/status panels too eventually,
+  // but log here for sanity.
+  useEffect(() => {
+    window.wakingdream.syncPatches(wowDir)
+      .then((res) => {
+        if (res.installed?.length) console.log('[patch-sync] installed:', res.installed);
+      })
+      .catch((e) => console.warn('[patch-sync] failed:', e?.message ?? e));
+  }, [wowDir]);
+
   const play = async () => {
     setLaunching(true);
     setLaunchError(null);
