@@ -26,6 +26,12 @@ export function MainScreen({ wowDir, launchSpec, onSpecChange }: Props) {
     setLaunchError(null);
   }, [launchSpec.kind, launchSpec.gameSlug, launchSpec.command]);
 
+  // Ensure realmlist.wtf is pointed at our server even if the user later runs
+  // Wow.exe manually outside the launcher. Fire-and-forget; PLAY re-writes too.
+  useEffect(() => {
+    window.wakingdream.setRealmlist(wowDir, 'wakingdream.cc').catch(() => { /* surfaced via PLAY-time errors */ });
+  }, [wowDir]);
+
   const play = async () => {
     setLaunching(true);
     setLaunchError(null);

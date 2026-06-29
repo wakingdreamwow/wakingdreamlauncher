@@ -70,14 +70,43 @@ ipcMain.handle('patches:sync', async (_e, wowDir: string) => {
   return { installed, manifest };
 });
 
+// In WoW 3.3.5a, realmlist.wtf lives in two places:
+//   1. <wowDir>/realmlist.wtf
+//   2. <wowDir>/Data/<locale>/realmlist.wtf  ← TAKES PRECEDENCE if it exists
+// Writing only the root file does nothing on installs that still have the
+// Blizzard locale file. We write to root + every <locale>/realmlist.wtf
+// we can find (Data subdirs that contain a base.MPQ are real locale dirs).
 ipcMain.handle('wow:set-realmlist', async (_e, wowDir: string, realmHost: string) => {
-  const realmlistPath = path.join(wowDir, 'realmlist.wtf');
   const content = `set realmlist ${realmHost}\n`;
-  if (fs.existsSync(realmlistPath)) {
-    fs.copyFileSync(realmlistPath, realmlistPath + '.bak');
+  const written: string[] = [];
+
+  const writeOne = (filePath: string) => {
+    if (fs.existsSync(filePath)) {
+      fs.copyFileSync(filePath, filePath + '.bak');
+    } else {
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    }
+    fs.writeFileSync(filePath, content, 'utf-8');
+    written.push(filePath);
+  };
+
+  // Root
+  writeOne(path.join(wowDir, 'realmlist.wtf'));
+
+  // Locale dirs
+  const dataDir = path.join(wowDir, 'Data');
+  if (fs.existsSync(dataDir)) {
+    for (const entry of fs.readdirSync(dataDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const localeDir = path.join(dataDir, entry.name);
+      // A real locale dir contains base-<locale>.MPQ or locale-<locale>.MPQ
+      const files = fs.readdirSync(localeDir);
+      const isLocale = files.some((f) => /^(base|locale)-/i.test(f));
+      if (isLocale) writeOne(path.join(localeDir, 'realmlist.wtf'));
+    }
   }
-  fs.writeFileSync(realmlistPath, content, 'utf-8');
-  return { ok: true };
+
+  return { ok: true, written };
 });
 
 ipcMain.handle(
