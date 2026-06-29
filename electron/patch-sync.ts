@@ -64,39 +64,70 @@ function httpsDownload(
   destPath: string,
   onProgress: (done: number, total: number, bps: number) => void,
   timeoutMs = 600000
-): Promise<{ sha256: string }> {
+): Promise<{ sha256: string; bytes: number }> {
   return new Promise((resolve, reject) => {
     const hash = crypto.createHash('sha256');
     const file = fs.createWriteStream(destPath);
     const start = Date.now();
     let done = 0;
+    let settled = false;
+    const settle = (fn: () => void) => { if (!settled) { settled = true; fn(); } };
 
-    const req = https.get(url, (res) => {
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode} ${res.statusMessage}`));
-        return;
-      }
-      const total = parseInt(res.headers['content-length'] || '0', 10);
+    file.on('error', (err) => settle(() => reject(new Error(`write failed: ${err.message}`))));
 
-      res.on('data', (chunk: Buffer) => {
-        hash.update(chunk);
-        file.write(chunk);
-        done += chunk.length;
-        const elapsed = (Date.now() - start) / 1000;
-        const bps = elapsed > 0 ? done / elapsed : 0;
-        onProgress(done, total, bps);
-      });
+    const followRedirect = (u: string, redirectsLeft: number) => {
+      const req = https.get(u, (res) => {
+        if (
+          (res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) &&
+          res.headers.location && redirectsLeft > 0
+        ) {
+          res.resume();
+          followRedirect(new URL(res.headers.location, u).toString(), redirectsLeft - 1);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          settle(() => reject(new Error(`HTTP ${res.statusCode} ${res.statusMessage} for ${u}`)));
+          res.resume();
+          return;
+        }
+        const total = parseInt(res.headers['content-length'] || '0', 10);
 
-      res.on('end', () => {
-        file.end(() => {
-          resolve({ sha256: hash.digest('hex') });
+        res.on('data', (chunk: Buffer) => {
+          hash.update(chunk);
+          file.write(chunk);
+          done += chunk.length;
+          const elapsed = (Date.now() - start) / 1000;
+          const bps = elapsed > 0 ? done / elapsed : 0;
+          onProgress(done, total, bps);
         });
-      });
 
-      res.on('error', reject);
-    });
-    req.setTimeout(timeoutMs, () => req.destroy(new Error('Request timeout')));
-    req.on('error', reject);
+        res.on('end', () => {
+          file.end(() => {
+            // Verify the file actually landed on disk with the bytes we counted.
+            // (Defensive: catches silent fs-quota / permission edge cases.)
+            try {
+              const stat = fs.statSync(destPath);
+              if (stat.size !== done) {
+                return settle(() => reject(new Error(
+                  `download truncated: wrote ${stat.size} bytes, expected ${done}`,
+                )));
+              }
+              settle(() => resolve({ sha256: hash.digest('hex'), bytes: done }));
+            } catch (e) {
+              settle(() => reject(new Error(
+                `download finished but file missing: ${(e as Error).message}`,
+              )));
+            }
+          });
+        });
+
+        res.on('error', (err) => settle(() => reject(err)));
+      });
+      req.setTimeout(timeoutMs, () => req.destroy(new Error('Request timeout')));
+      req.on('error', (err) => settle(() => reject(err)));
+    };
+
+    followRedirect(url, 5);
   });
 }
 
@@ -206,7 +237,7 @@ export async function syncPatches(
     });
 
     if (result.sha256 !== patch.sha256) {
-      fs.unlinkSync(tmpFile);
+      try { fs.unlinkSync(tmpFile); } catch { /* ignore */ }
       throw new Error(`Hash mismatch for ${patch.name}: expected ${patch.sha256} got ${result.sha256}`);
     }
 
@@ -216,6 +247,11 @@ export async function syncPatches(
       message: `Installing ${patch.name}…`,
     });
 
+    // Guard against the file disappearing between download and rename
+    // (race with a parallel sync, antivirus quarantine, etc.).
+    if (!fs.existsSync(tmpFile)) {
+      throw new Error(`partial file vanished before install: ${tmpFile} (concurrent sync?)`);
+    }
     fs.renameSync(tmpFile, destFile);
     local.patches[patch.name] = { sha256: patch.sha256, installed_at: new Date().toISOString() };
     saveLocalState(stateDir, local);

@@ -62,12 +62,25 @@ ipcMain.handle('fetch:manifest', async () => {
   return await fetchManifest(MANIFEST_URL);
 });
 
+// Guard against concurrent syncs (PatchSyncScreen + MainScreen auto-sync race).
+// Without this, both invocations download to the same .partial file and the
+// loser hits ENOENT on rename. With a single in-flight Promise, callers share
+// the same result.
+let _syncInFlight: Promise<{ installed: string[]; manifest: unknown }> | null = null;
 ipcMain.handle('patches:sync', async (_e, wowDir: string) => {
-  const manifest = await fetchManifest(MANIFEST_URL);
-  const installed = await syncPatches(wowDir, manifest, (p: SyncProgress) => {
-    mainWindow?.webContents.send('patches:progress', p);
-  });
-  return { installed, manifest };
+  if (_syncInFlight) return _syncInFlight;
+  _syncInFlight = (async () => {
+    try {
+      const manifest = await fetchManifest(MANIFEST_URL);
+      const installed = await syncPatches(wowDir, manifest, (p: SyncProgress) => {
+        mainWindow?.webContents.send('patches:progress', p);
+      });
+      return { installed, manifest };
+    } finally {
+      _syncInFlight = null;
+    }
+  })();
+  return _syncInFlight;
 });
 
 // In WoW 3.3.5a, realmlist.wtf lives in two places:
