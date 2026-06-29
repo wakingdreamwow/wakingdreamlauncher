@@ -73,6 +73,8 @@ export interface WakingdreamAPI {
   ) => Promise<{ ok: boolean; runtime?: string }>;
   detectLaunchers: () => Promise<LauncherDetection>;
 
+  openExternal: (url: string) => Promise<{ ok: boolean; error?: string }>;
+
   checkForUpdates: () => Promise<unknown>;
   quitAndInstallUpdate: () => Promise<unknown>;
   onUpdaterEvent: (cb: (e: UpdaterEvent) => void) => () => void;

@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('wakingdream', {
   launchWow: (dir: string, launchSpec?: any) => ipcRenderer.invoke('wow:launch', dir, launchSpec),
   detectLaunchers: () => ipcRenderer.invoke('system:detect-launchers'),
 
+  openExternal: (url: string) => ipcRenderer.invoke('shell:open-external', url),
+
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   quitAndInstallUpdate: () => ipcRenderer.invoke('updater:quit-and-install'),
   onUpdaterEvent: (cb: (e: any) => void) => {

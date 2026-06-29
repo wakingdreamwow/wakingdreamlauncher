@@ -1,6 +1,6 @@
 {
   "name": "wakingdream-launcher",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Cross-platform launcher for Wakingdream WoW 3.3.5a private server",
   "main": "dist-electron/main.js",
   "scripts": {

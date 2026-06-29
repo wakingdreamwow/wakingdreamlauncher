@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import { spawn, execFileSync } from 'node:child_process';
@@ -108,6 +108,21 @@ function isAvailable(binary: string): boolean {
     return false;
   }
 }
+
+// Open URL in the user's default browser, with light protocol allow-listing
+// so we never accidentally hand the renderer a file:// or javascript: target.
+ipcMain.handle('shell:open-external', async (_e, url: string) => {
+  try {
+    const u = new URL(url);
+    if (!['https:', 'http:'].includes(u.protocol)) {
+      throw new Error(`refusing non-http(s) URL: ${u.protocol}`);
+    }
+    await shell.openExternal(u.toString());
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+});
 
 ipcMain.handle('system:detect-launchers', async () => {
   if (process.platform === 'win32') {
